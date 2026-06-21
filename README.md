@@ -1,5 +1,9 @@
 # 🥗 CalTrack — Calorie Tracker & Macro Dashboard
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Render-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://the-calorie-tracker-macro-dashboard.onrender.com)
+
+> 🌐 **Live App:** https://the-calorie-tracker-macro-dashboard.onrender.com
+
 A full-stack daily food journal web app built for the **Quantiphi Vibe Coding Challenge (Set-A)**.
 
 ## ✨ Features
