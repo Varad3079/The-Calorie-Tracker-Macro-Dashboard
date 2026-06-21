@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,11 +10,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Gemini Setup ─────────────────────────────────────────────────────────────
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel(
-  { model: 'gemini-1.5-flash' },
-  { apiVersion: 'v1' }
-);
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // ─── In-Memory State ──────────────────────────────────────────────────────────
 let state = {
@@ -69,8 +65,11 @@ Rules:
 - Base your answer on standard nutritional data for this food`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-lite',
+      contents: prompt,
+    });
+    const text = response.text.trim();
 
     // Strip any accidental markdown fences
     const cleaned = text.replace(/```json|```/g, '').trim();
