@@ -120,7 +120,12 @@ function renderMealsGrid(meals) {
   el.mealsGrid.innerHTML = meals.map(meal => `
     <div class="meal-row" id="meal-${meal.id}" role="listitem">
       <div>
-        <div class="meal-name">${escapeHtml(meal.name)}</div>
+        <div class="meal-name">
+          ${escapeHtml(meal.name)}
+          <span class="source-badge ${meal.source === 'gemini' ? 'badge-ai' : 'badge-est'}" title="${meal.source === 'gemini' ? 'Data from Gemini AI' : 'Estimated values'}">
+            ${meal.source === 'gemini' ? '✦ AI' : '~ est'}
+          </span>
+        </div>
         <div class="meal-grams">${meal.grams}g</div>
       </div>
       <div class="meal-macro macro-cal">

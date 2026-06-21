@@ -1,6 +1,7 @@
+require('dotenv').config();
 const express = require('express');
 const path = require('path');
-const { v4: uuidv4 } = require('crypto');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -8,28 +9,24 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── In-Memory State ────────────────────────────────────────────────────────
+// ─── Gemini Setup ─────────────────────────────────────────────────────────────
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+// ─── In-Memory State ──────────────────────────────────────────────────────────
 let state = {
   goal: 'maintenance',
   meals: [],
 };
 
-// ─── Budget Tables ───────────────────────────────────────────────────────────
+// ─── Budget Tables ────────────────────────────────────────────────────────────
 const BUDGETS = {
   weight_loss:  { calories: 1600, protein: 120, carbs: 150, fat: 50 },
   maintenance:  { calories: 2000, protein: 150, carbs: 220, fat: 65 },
   muscle_gain:  { calories: 2500, protein: 180, carbs: 300, fat: 80 },
 };
 
-// ─── Nutrient Baseline (per 100g) ────────────────────────────────────────────
-const BASELINE_PER_100G = {
-  calories: 250, // kcal
-  protein:  15,  // g
-  carbs:    30,  // g
-  fat:       8,  // g
-};
-
-// ─── Mock Scan Foods ─────────────────────────────────────────────────────────
+// ─── Mock Scan Foods ──────────────────────────────────────────────────────────
 const MOCK_FOODS = [
   { name: 'Grilled Chicken',  grams: 150 },
   { name: 'Brown Rice',       grams: 200 },
@@ -38,15 +35,63 @@ const MOCK_FOODS = [
   { name: 'Oatmeal',          grams: 100 },
 ];
 
-// ─── Helper: Calculate Nutrients ─────────────────────────────────────────────
-function calculateNutrients(grams) {
-  const factor = grams / 100;
+// ─── Fallback Baseline (per 100g) ─────────────────────────────────────────────
+const BASELINE_PER_100G = { calories: 250, protein: 15, carbs: 30, fat: 8 };
+
+function fallbackNutrients(grams) {
+  const f = grams / 100;
   return {
-    calories: parseFloat((BASELINE_PER_100G.calories * factor).toFixed(1)),
-    protein:  parseFloat((BASELINE_PER_100G.protein  * factor).toFixed(1)),
-    carbs:    parseFloat((BASELINE_PER_100G.carbs    * factor).toFixed(1)),
-    fat:      parseFloat((BASELINE_PER_100G.fat      * factor).toFixed(1)),
+    calories: parseFloat((BASELINE_PER_100G.calories * f).toFixed(1)),
+    protein:  parseFloat((BASELINE_PER_100G.protein  * f).toFixed(1)),
+    carbs:    parseFloat((BASELINE_PER_100G.carbs    * f).toFixed(1)),
+    fat:      parseFloat((BASELINE_PER_100G.fat      * f).toFixed(1)),
+    source:   'estimate',
   };
+}
+
+// ─── Gemini Nutrition Lookup ──────────────────────────────────────────────────
+async function getNutrientsFromGemini(name, grams) {
+  const prompt = `You are a precise nutrition database. Given a food item and its weight, return ONLY a valid JSON object with nutritional values. No markdown, no explanation, no code blocks — just raw JSON.
+
+Food: ${name}
+Weight: ${grams}g
+
+Respond with ONLY this exact JSON structure:
+{"calories": <number>, "protein": <number>, "carbs": <number>, "fat": <number>}
+
+Rules:
+- calories = total kcal for the given weight
+- protein, carbs, fat = grams for the given weight
+- All values must be positive numbers rounded to 1 decimal place
+- Base your answer on standard nutritional data for this food`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+
+    // Strip any accidental markdown fences
+    const cleaned = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+
+    // Validate the response has all required fields
+    const { calories, protein, carbs, fat } = parsed;
+    if (
+      typeof calories === 'number' && typeof protein === 'number' &&
+      typeof carbs   === 'number' && typeof fat     === 'number'
+    ) {
+      return {
+        calories: parseFloat(calories.toFixed(1)),
+        protein:  parseFloat(protein.toFixed(1)),
+        carbs:    parseFloat(carbs.toFixed(1)),
+        fat:      parseFloat(fat.toFixed(1)),
+        source:   'gemini',
+      };
+    }
+    throw new Error('Invalid response structure from Gemini');
+  } catch (err) {
+    console.warn(`[Gemini] Failed for "${name}" ${grams}g — using fallback. Error: ${err.message}`);
+    return fallbackNutrients(grams);
+  }
 }
 
 // ─── Helper: Compute Totals ───────────────────────────────────────────────────
@@ -63,15 +108,15 @@ function computeTotals() {
   );
 }
 
-// ─── Helper: Build Full Response ─────────────────────────────────────────────
+// ─── Helper: Build Full Response ──────────────────────────────────────────────
 function buildResponse() {
   const budget = BUDGETS[state.goal];
   const totals = computeTotals();
   const exceeded = totals.calories > budget.calories;
   return {
-    goal:     state.goal,
-    meals:    state.meals,
-    totals:   {
+    goal:   state.goal,
+    meals:  state.meals,
+    totals: {
       calories: parseFloat(totals.calories.toFixed(1)),
       protein:  parseFloat(totals.protein.toFixed(1)),
       carbs:    parseFloat(totals.carbs.toFixed(1)),
@@ -82,15 +127,15 @@ function buildResponse() {
   };
 }
 
-// ─── Routes ──────────────────────────────────────────────────────────────────
+// ─── Routes ───────────────────────────────────────────────────────────────────
 
-// GET /api/state — full current state
+// GET /api/state
 app.get('/api/state', (req, res) => {
   res.json(buildResponse());
 });
 
-// POST /api/meals — add a meal
-app.post('/api/meals', (req, res) => {
+// POST /api/meals — Gemini-powered nutrient lookup
+app.post('/api/meals', async (req, res) => {
   const { name, grams } = req.body;
 
   if (!name || typeof name !== 'string' || name.trim() === '') {
@@ -101,30 +146,34 @@ app.post('/api/meals', (req, res) => {
     return res.status(400).json({ error: 'Grams must be a positive number.' });
   }
 
-  const nutrients = calculateNutrients(g);
+  // Call Gemini for real nutrition data (falls back to baseline on failure)
+  const nutrients = await getNutrientsFromGemini(name.trim(), g);
+
   const meal = {
-    id:   Math.random().toString(36).substr(2, 9),
-    name: name.trim(),
+    id:    Math.random().toString(36).substr(2, 9),
+    name:  name.trim(),
     grams: g,
-    ...nutrients,
+    calories: nutrients.calories,
+    protein:  nutrients.protein,
+    carbs:    nutrients.carbs,
+    fat:      nutrients.fat,
+    source:   nutrients.source,   // 'gemini' or 'estimate'
   };
 
   state.meals.push(meal);
   res.status(201).json(buildResponse());
 });
 
-// DELETE /api/meals/:id — remove a meal
+// DELETE /api/meals/:id
 app.delete('/api/meals/:id', (req, res) => {
   const { id } = req.params;
   const idx = state.meals.findIndex(m => m.id === id);
-  if (idx === -1) {
-    return res.status(404).json({ error: 'Meal not found.' });
-  }
+  if (idx === -1) return res.status(404).json({ error: 'Meal not found.' });
   state.meals.splice(idx, 1);
   res.json(buildResponse());
 });
 
-// PUT /api/goal — update fitness goal
+// PUT /api/goal
 app.put('/api/goal', (req, res) => {
   const { goal } = req.body;
   if (!BUDGETS[goal]) {
@@ -134,13 +183,14 @@ app.put('/api/goal', (req, res) => {
   res.json(buildResponse());
 });
 
-// GET /api/mock-scan — return a random pre-defined food
+// GET /api/mock-scan
 app.get('/api/mock-scan', (req, res) => {
   const food = MOCK_FOODS[Math.floor(Math.random() * MOCK_FOODS.length)];
   res.json(food);
 });
 
-// ─── Start ───────────────────────────────────────────────────────────────────
+// ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`Calorie Tracker running at http://localhost:${PORT}`);
+  console.log(`CalTrack running at http://localhost:${PORT}`);
+  console.log(`Gemini API: ${process.env.GEMINI_API_KEY ? '✅ Connected' : '⚠️  Not configured (using fallback)'}`);
 });
