@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CalTrack — Daily Macro Dashboard</title>
+  <meta name="description" content="Track your daily calories and macronutrients with real-time budget monitoring and fitness goal management." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ─── Budget Exceeded Modal ────────────────────────────────────────── -->
+  <div id="modal-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card">
+      <div class="modal-icon">⚠️</div>
+      <h2 id="modal-title" class="modal-title">Daily Budget Exceeded!</h2>
+      <p class="modal-body">You've gone over your calorie limit for the day. Consider removing a meal or adjusting your goal.</p>
+      <button id="modal-close-btn" class="modal-close-btn" aria-label="Dismiss warning">Got it</button>
+    </div>
+  </div>
+
+  <!-- ─── App Shell ─────────────────────────────────────────────────────── -->
+  <div class="app-shell">
+
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <span class="brand-icon">🥗</span>
+        <div>
+          <h1 class="brand-name">CalTrack</h1>
+          <p class="brand-subtitle">Daily Macro Dashboard</p>
+        </div>
+      </div>
+
+      <!-- Fitness Goal Toggle -->
+      <div class="goal-toggle-wrap">
+        <span class="goal-label">Fitness Goal</span>
+        <div class="goal-toggle" role="group" aria-label="Select fitness goal">
+          <button id="goal-weight_loss"  class="goal-btn" data-goal="weight_loss"  aria-pressed="false">Weight Loss</button>
+          <button id="goal-maintenance"  class="goal-btn active" data-goal="maintenance"  aria-pressed="true">Maintenance</button>
+          <button id="goal-muscle_gain"  class="goal-btn" data-goal="muscle_gain"  aria-pressed="false">Muscle Gain</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="main-content">
+
+      <!-- ─── Progress Section ─────────────────────────────────────────── -->
+      <section class="progress-section" aria-label="Calorie and macro progress">
+
+        <!-- Calorie Bar -->
+        <div class="calorie-card">
+          <div class="calorie-header">
+            <div>
+              <p class="calorie-label">Daily Calories</p>
+              <p class="calorie-values">
+                <span id="cal-consumed">0</span>
+                <span class="cal-sep">/</span>
+                <span id="cal-budget">2000</span>
+                <span class="cal-unit">kcal</span>
+              </p>
+            </div>
+            <div id="cal-percent-badge" class="cal-percent-badge">0%</div>
+          </div>
+          <div class="calorie-bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Daily calorie progress">
+            <div id="calorie-bar-fill" class="calorie-bar-fill"></div>
+          </div>
+        </div>
+
+        <!-- Macro Bars -->
+        <div class="macro-grid">
+
+          <div class="macro-card">
+            <div class="macro-header">
+              <span class="macro-icon protein-icon">🥩</span>
+              <div class="macro-info">
+                <span class="macro-name">Protein</span>
+                <span class="macro-vals">
+                  <span id="prot-consumed">0</span>g /
+                  <span id="prot-budget">150</span>g
+                </span>
+              </div>
+              <span id="prot-pct" class="macro-pct">0%</span>
+            </div>
+            <div class="macro-bar-track" role="progressbar" aria-label="Protein progress">
+              <div id="prot-bar" class="macro-bar-fill protein-bar"></div>
+            </div>
+          </div>
+
+          <div class="macro-card">
+            <div class="macro-header">
+              <span class="macro-icon carbs-icon">🍞</span>
+              <div class="macro-info">
+                <span class="macro-name">Carbs</span>
+                <span class="macro-vals">
+                  <span id="carbs-consumed">0</span>g /
+                  <span id="carbs-budget">220</span>g
+                </span>
+              </div>
+              <span id="carbs-pct" class="macro-pct">0%</span>
+            </div>
+            <div class="macro-bar-track" role="progressbar" aria-label="Carbohydrates progress">
+              <div id="carbs-bar" class="macro-bar-fill carbs-bar"></div>
+            </div>
+          </div>
+
+          <div class="macro-card">
+            <div class="macro-header">
+              <span class="macro-icon fat-icon">🧈</span>
+              <div class="macro-info">
+                <span class="macro-name">Fat</span>
+                <span class="macro-vals">
+                  <span id="fat-consumed">0</span>g /
+                  <span id="fat-budget">65</span>g
+                </span>
+              </div>
+              <span id="fat-pct" class="macro-pct">0%</span>
+            </div>
+            <div class="macro-bar-track" role="progressbar" aria-label="Fat progress">
+              <div id="fat-bar" class="macro-bar-fill fat-bar"></div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ─── Log Food Panel ───────────────────────────────────────────── -->
+      <section class="log-section" aria-label="Log food">
+        <h2 class="section-title">Log Food</h2>
+        <div class="log-card">
+          <div class="log-form">
+            <div class="input-group">
+              <label for="food-name-input" class="input-label">Food Name</label>
+              <input
+                id="food-name-input"
+                type="text"
+                class="text-input"
+                placeholder="e.g. Grilled Chicken"
+                autocomplete="off"
+                aria-label="Food name"
+              />
+            </div>
+            <div class="input-group">
+              <label for="food-grams-input" class="input-label">Portion (grams)</label>
+              <input
+                id="food-grams-input"
+                type="number"
+                class="text-input"
+                placeholder="e.g. 200"
+                min="1"
+                aria-label="Portion in grams"
+              />
+            </div>
+            <div class="log-actions">
+              <button id="add-food-btn" class="btn btn-primary" aria-label="Add food to log">
+                <span class="btn-icon">+</span> Add Food
+              </button>
+              <button id="scan-btn" class="btn btn-secondary" aria-label="Simulate image scan">
+                📷 Scan Image
+              </button>
+            </div>
+          </div>
+          <p id="form-error" class="form-error hidden" role="alert"></p>
+        </div>
+      </section>
+
+      <!-- ─── Today's Meals ─────────────────────────────────────────────── -->
+      <section class="meals-section" aria-label="Today's meals">
+        <h2 class="section-title">Today's Meals</h2>
+        <div id="meals-empty" class="meals-empty">
+          <span class="empty-icon">🍽️</span>
+          <p>No meals logged yet. Add your first meal above!</p>
+        </div>
+        <div id="meals-grid" class="meals-grid" role="list"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
